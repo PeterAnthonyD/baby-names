@@ -27,6 +27,20 @@ describe('api', () => {
     expect(me.body).toMatchObject({ displayName: 'Petey', lastName: 'Smith', partners: ['Wife'] });
   });
 
+  it('signs back in as an existing person with the family code', async () => {
+    const { inviteCode } = (await call('GET', '/api/me', petey)).body;
+    const list = await call('POST', '/api/family/members', null, { code: inviteCode });
+    expect(list.body.members.map((m: any) => m.displayName)).toEqual(['Petey', 'Wife']);
+    const peteyId = list.body.members[0].id;
+    const again = await call('POST', '/api/join', null, { code: inviteCode, memberId: peteyId });
+    expect(again.body.token).toBe(petey);
+    expect((await call('POST', '/api/family/members', null, { code: 'ZZZZZZ' })).status).toBe(404);
+    // A member id from another family doesn't work with this code.
+    const other = (await call('POST', '/api/family', null, { displayName: 'Stranger' })).body.token;
+    const otherCode = (await call('GET', '/api/me', other)).body.inviteCode;
+    expect((await call('POST', '/api/join', null, { code: otherCode, memberId: peteyId })).status).toBe(404);
+  });
+
   it('rejects requests without a valid token', async () => {
     expect((await call('GET', '/api/deck')).status).toBe(401);
     expect((await call('GET', '/api/deck', 'nope')).status).toBe(401);

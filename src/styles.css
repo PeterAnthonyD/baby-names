@@ -662,3 +662,21 @@ h1 {
 .reset-done {
   margin-top: 10px !important;
 }
+
+.who {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.who-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.who-button {
+  border-radius: 14px;
+  padding: 14px;
+  font-weight: 600;
+}
