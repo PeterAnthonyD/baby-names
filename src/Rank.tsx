@@ -75,7 +75,7 @@ function Rate({ me }: { me: Me }) {
             {card.name} {me.lastName}
           </p>
         )}
-        <NameDetails card={card} dataYear={me.dataYear} />
+        <NameDetails card={card} me={me} />
         <p className="muted small-text rate-history">
           {card.timesRated
             ? `You've rated this ${card.timesRated} time${card.timesRated === 1 ? '' : 's'}, averaging ${card.myScore}`

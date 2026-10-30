@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { ensureReady, type Db } from './db.js';
-import { DATA_YEAR } from './namesData.js';
+import { DATA_YEAR, TREND_YEARS } from './namesData.js';
 
 export type ApiRequest = {
   method: string;
@@ -179,6 +179,7 @@ async function me(db: Db, member: Member) {
     lastName: household.last_name,
     partners: partners.map((p) => p.display_name),
     dataYear: DATA_YEAR,
+    trendYears: TREND_YEARS,
   };
 }
 
@@ -199,10 +200,13 @@ export type Card = {
   rank: number | null;
   trend: 'up' | 'down' | 'flat' | null;
   peakYear: number | null;
+  peakRank: number | null;
+  prevRank: number | null;
   addedBy: string | null;
 };
 
-const CARD_COLUMNS = `n.id, n.name, n.sex, n.rank, n.trend, n.peak_year as "peakYear", am.display_name as "addedBy"`;
+const CARD_COLUMNS = `n.id, n.name, n.sex, n.rank, n.trend, n.peak_year as "peakYear",
+  n.peak_rank as "peakRank", n.prev_rank as "prevRank", am.display_name as "addedBy"`;
 
 async function deck(db: Db, member: Member, query: URLSearchParams): Promise<{ cards: Card[] }> {
   const params: unknown[] = [member.id, member.household_id];
@@ -331,7 +335,7 @@ async function results(db: Db, member: Member) {
      join names n on n.id = v.name_id
      left join household_names hn on hn.name_id = n.id and hn.household_id = $2
      left join members am on am.id = hn.added_by
-     group by n.id, n.name, n.sex, n.rank, n.trend, n.peak_year, am.display_name`,
+     group by n.id, n.name, n.sex, n.rank, n.trend, n.peak_year, n.peak_rank, n.prev_rank, am.display_name`,
     [member.id, member.household_id],
   );
   const list: ResultRow[] = rows.map(({ theirs_score, ...r }) => ({
@@ -456,7 +460,7 @@ async function rankings(db: Db, member: Member): Promise<{ rows: RankingRow[] }>
      left join per_member pm on pm.name_id = n.id
      left join household_names hn on hn.name_id = n.id and hn.household_id = $2
      left join members am on am.id = hn.added_by
-     group by n.id, n.name, n.sex, n.rank, n.trend, n.peak_year, am.display_name`,
+     group by n.id, n.name, n.sex, n.rank, n.trend, n.peak_year, n.peak_rank, n.prev_rank, am.display_name`,
     [member.id, member.household_id],
   );
   return { rows };

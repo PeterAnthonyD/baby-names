@@ -71,7 +71,7 @@ export function Results({ partner, hasPartner, me }: { partner: string; hasPartn
                 <strong>{row.name}</strong>
                 {me.lastName && <span className="muted"> {me.lastName}</span>}
                 <div className="small-text muted">
-                  {row.addedBy ? `Added by ${row.addedBy}` : row.rank ? `#${row.rank.toLocaleString()} in ${me.dataYear}` : 'Uncommon'}
+                  {row.addedBy ? `Added by ${row.addedBy}` : row.rank ? `#${row.rank.toLocaleString()} in ${me.dataYear}` : row.peakRank ? `Peaked #${row.peakRank.toLocaleString()} in ${row.peakYear}` : 'Uncommon'}
                   {row.theirs && ` · ${partner}: ${ICON[row.theirs]}`}
                 </div>
               </div>

@@ -117,7 +117,7 @@ export function Swipe({ me }: { me: Me }) {
               key={card.id}
               card={card}
               lastName={me.lastName}
-              dataYear={me.dataYear}
+              me={me}
               isTop={card.id === top?.id}
               onDecide={(v) => decide(card, v)}
             />
@@ -165,7 +165,7 @@ function filterCount(f: Filters) {
 function SwipeCard(props: {
   card: Card;
   lastName: string;
-  dataYear: number;
+  me: Me;
   isTop: boolean;
   onDecide: (v: Verdict) => void;
 }) {
@@ -247,7 +247,7 @@ function SwipeCard(props: {
           {card.name} {props.lastName}
         </p>
       )}
-      <NameDetails card={card} dataYear={props.dataYear} />
+      <NameDetails card={card} me={props.me} />
     </motion.div>
   );
 }
