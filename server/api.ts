@@ -35,6 +35,8 @@ export async function handleApi(db: Db, req: ApiRequest): Promise<ApiResponse> {
         return ok(await createFamily(db, req.body));
       case 'POST /api/join':
         return ok(await joinFamily(db, req.body));
+      case 'POST /api/family/members':
+        return ok(await familyMembers(db, req.body));
       case 'GET /api/me':
         return ok(await me(db, await auth(db, req)));
       case 'PATCH /api/family':
@@ -129,12 +131,37 @@ async function createFamily(db: Db, body: unknown) {
   return { token: await addMember(db, id, displayName) };
 }
 
-async function joinFamily(db: Db, body: unknown) {
+async function householdByCode(db: Db, body: unknown) {
   const code = field(body, 'code', 12).toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const displayName = field(body, 'displayName');
   const [household] = await db.query<{ id: string }>('select id from households where invite_code = $1', [code]);
   if (!household) throw new HttpError(404, 'No family with that code');
-  return { token: await addMember(db, household.id, displayName) };
+  return household;
+}
+
+// Joins as a new person, or with memberId signs back in as someone already in
+// the family (new phone, cleared browser). The family code is the only secret,
+// so anyone who has it can do either.
+async function joinFamily(db: Db, body: unknown) {
+  const household = await householdByCode(db, body);
+  const memberId = (body as Record<string, unknown> | null)?.memberId;
+  if (typeof memberId === 'string') {
+    const [member] = await db.query<{ token: string }>(
+      'select token from members where id::text = $1 and household_id = $2',
+      [memberId, household.id],
+    );
+    if (!member) throw new HttpError(404, 'That person is not in this family');
+    return { token: member.token };
+  }
+  return { token: await addMember(db, household.id, field(body, 'displayName')) };
+}
+
+async function familyMembers(db: Db, body: unknown) {
+  const household = await householdByCode(db, body);
+  const members = await db.query<{ id: string; displayName: string }>(
+    'select id, display_name as "displayName" from members where household_id = $1 order by created_at',
+    [household.id],
+  );
+  return { members };
 }
 
 async function me(db: Db, member: Member) {

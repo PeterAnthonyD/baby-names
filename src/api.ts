@@ -84,6 +84,10 @@ export const api = {
   createFamily: (displayName: string, lastName: string) =>
     request<{ token: string }>('POST', '/api/family', { displayName, lastName }),
   join: (code: string, displayName: string) => request<{ token: string }>('POST', '/api/join', { code, displayName }),
+  signBackIn: (code: string, memberId: string) =>
+    request<{ token: string }>('POST', '/api/join', { code, memberId }),
+  familyMembers: (code: string) =>
+    request<{ members: { id: string; displayName: string }[] }>('POST', '/api/family/members', { code }),
   me: () => request<Me>('GET', '/api/me'),
   setLastName: (lastName: string) => request<Me>('PATCH', '/api/family', { lastName }),
   deck: (filters: Filters, limit = 30) => {

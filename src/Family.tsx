@@ -84,7 +84,7 @@ export function Family({ me, onChange, onSignOut }: { me: Me; onChange: (me: Me)
       <button
         className="link"
         onClick={() => {
-          if (confirm('Sign out on this phone? You will need the family code to rejoin as a new person.')) onSignOut();
+          if (confirm('Sign out on this phone? You can sign back in with the family code.')) onSignOut();
         }}
       >
         Sign out
