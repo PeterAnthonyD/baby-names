@@ -1,0 +1,104 @@
+import { beforeAll, describe, expect, it } from 'vitest';
+import { handleApi } from './api.js';
+import { pgliteDb } from './pglite.js';
+
+const db = pgliteDb();
+
+async function call(method: string, path: string, token: string | null = null, body: unknown = null) {
+  const [p, qs] = path.split('?');
+  const res = await handleApi(db, { method, path: p, query: new URLSearchParams(qs), token, body });
+  return res as { status: number; body: any };
+}
+
+let petey = '';
+let wife = '';
+
+beforeAll(async () => {
+  petey = (await call('POST', '/api/family', null, { displayName: 'Petey', lastName: 'Smith' })).body.token;
+  const me = await call('GET', '/api/me', petey);
+  wife = (await call('POST', '/api/join', null, { code: me.body.inviteCode.toLowerCase(), displayName: 'Wife' })).body.token;
+}, 60_000);
+
+describe('api', () => {
+  it('seeds the SSA names and pairs both people', async () => {
+    const [{ count }] = await db.query<{ count: number }>('select count(*)::int as count from names');
+    expect(count).toBeGreaterThan(20_000);
+    const me = await call('GET', '/api/me', petey);
+    expect(me.body).toMatchObject({ displayName: 'Petey', lastName: 'Smith', partners: ['Wife'] });
+  });
+
+  it('rejects requests without a valid token', async () => {
+    expect((await call('GET', '/api/deck')).status).toBe(401);
+    expect((await call('GET', '/api/deck', 'nope')).status).toBe(401);
+    expect((await call('POST', '/api/join', null, { code: 'ZZZZZZ', displayName: 'x' })).status).toBe(404);
+  });
+
+  it('filters the deck', async () => {
+    const top = await call('GET', '/api/deck?sex=F&popularity=top100&limit=50', petey);
+    expect(top.body.cards.length).toBe(50);
+    for (const c of top.body.cards) {
+      expect(c.rank).toBeLessThanOrEqual(100);
+      expect(['F', 'U']).toContain(c.sex);
+    }
+    const letter = await call('GET', '/api/deck?letter=q', petey);
+    expect(letter.body.cards.every((c: any) => c.name.startsWith('Q'))).toBe(true);
+  });
+
+  it('computes matches and disagreements', async () => {
+    const id = async (name: string) =>
+      (await db.query<{ id: number }>('select id from names where name = $1', [name]))[0].id;
+    const [emma, ava, liam, noah] = await Promise.all(['Emma', 'Ava', 'Liam', 'Noah'].map(id));
+    const v = (t: string, nameId: number, verdict: string) => call('POST', '/api/vote', t, { nameId, verdict });
+    await v(petey, emma, 'love');
+    await v(wife, emma, 'like');
+    await v(petey, ava, 'like');
+    await v(wife, ava, 'pass');
+    await v(petey, liam, 'pass');
+    await v(wife, liam, 'love');
+    await v(petey, noah, 'like');
+
+    const r = (await call('GET', '/api/results', petey)).body;
+    expect(r.matches.map((x: any) => x.name)).toEqual(['Emma']);
+    expect(r.onlyMe.map((x: any) => x.name)).toEqual(['Ava']);
+    expect(r.onlyThem.map((x: any) => x.name)).toEqual(['Liam']);
+    expect(r.waitingOnThem.map((x: any) => x.name)).toEqual(['Noah']);
+
+    const w = (await call('GET', '/api/results', wife)).body;
+    expect(w.onlyMe.map((x: any) => x.name)).toEqual(['Liam']);
+    expect(w.waitingOnMe).toBe(1);
+
+    // Noah (liked by Petey) is first in the wife's deck; voted names never come back.
+    const deck = (await call('GET', '/api/deck?limit=100', wife)).body.cards;
+    expect(deck[0].name).toBe('Noah');
+    expect(deck.some((c: any) => ['Emma', 'Ava', 'Liam'].includes(c.name))).toBe(false);
+
+    await call('DELETE', `/api/vote?nameId=${noah}`, petey);
+    expect((await call('GET', '/api/results', petey)).body.waitingOnThem).toEqual([]);
+  });
+
+  it('puts added names at the front of both decks, ignoring filters', async () => {
+    const added = await call('POST', '/api/names', petey, { name: 'zephyrine', sex: 'F' });
+    expect(added.body.card).toMatchObject({ name: 'Zephyrine', addedBy: 'Petey' });
+    const again = await call('POST', '/api/names', wife, { name: 'Zephyrine' });
+    expect(again.body.card.id).toBe(added.body.card.id);
+
+    // An SSA name added by hand reuses the existing entry.
+    const olivia = await call('POST', '/api/names', wife, { name: 'olivia' });
+    expect(olivia.body.card).toMatchObject({ name: 'Olivia', addedBy: 'Wife' });
+    expect(olivia.body.card.rank).not.toBeNull();
+
+    const deck = (await call('GET', '/api/deck?sex=M&popularity=rare&letter=b', petey)).body.cards;
+    expect(deck.slice(0, 2).map((c: any) => c.name).sort()).toEqual(['Olivia', 'Zephyrine']);
+
+    // Custom names are private to the family.
+    const other = (await call('POST', '/api/family', null, { displayName: 'Other' })).body.token;
+    const otherDeck = (await call('GET', '/api/deck?letter=z&limit=100', other)).body.cards;
+    expect(otherDeck.some((c: any) => c.name === 'Zephyrine')).toBe(false);
+    expect((await call('POST', '/api/vote', other, { nameId: added.body.card.id, verdict: 'like' })).status).toBe(404);
+  });
+
+  it('validates input', async () => {
+    expect((await call('POST', '/api/names', petey, { name: '<script>' })).status).toBe(400);
+    expect((await call('POST', '/api/vote', petey, { nameId: 1, verdict: 'meh' })).status).toBe(400);
+  });
+});
