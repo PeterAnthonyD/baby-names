@@ -28,13 +28,13 @@ npm test        # API tests against an in-memory Postgres
 
 ## Updating the name list
 
-The bundled data runs through 2017. To update it, download [names.zip](https://www.ssa.gov/oact/babynames/names.zip) from the SSA, unzip it, and run:
+The bundled data runs through 2024 (SSA releases each year's list around May). To update it, download [names.zip](https://www.ssa.gov/oact/babynames/names.zip) from the SSA, unzip it, and run:
 
 ```sh
 npm run build-names -- path/to/unzipped/folder
 ```
 
-Then bump `SEED_VERSION` in `server/db.ts` so the database reloads the names on the next deploy. Votes are kept.
+Commit the regenerated `server/namesData.ts`. The next deploy reloads the names automatically, and votes are kept.
 
 ## How it's built
 
