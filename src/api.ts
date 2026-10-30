@@ -8,6 +8,8 @@ export type Card = {
   rank: number | null;
   trend: 'up' | 'down' | 'flat' | null;
   peakYear: number | null;
+  peakRank: number | null;
+  prevRank: number | null;
   addedBy: string | null;
 };
 
@@ -19,6 +21,7 @@ export type Me = {
   lastName: string;
   partners: string[];
   dataYear: number;
+  trendYears: number;
 };
 
 export type Results = {

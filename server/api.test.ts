@@ -41,6 +41,17 @@ describe('api', () => {
     expect((await call('POST', '/api/join', null, { code: otherCode, memberId: peteyId })).status).toBe(404);
   });
 
+  it('returns current rank, peak rank and year, and the rank five years back', async () => {
+    const cards = (await call('GET', '/api/deck?letter=j&popularity=top1000&limit=100', petey)).body.cards;
+    for (const c of cards) {
+      expect(c.rank).toBeGreaterThan(0);
+      expect(c.peakRank).toBeLessThanOrEqual(c.rank);
+      expect(c.peakYear).toBeGreaterThanOrEqual(1880);
+    }
+    const me = (await call('GET', '/api/me', petey)).body;
+    expect(me.trendYears).toBe(5);
+  });
+
   it('rejects requests without a valid token', async () => {
     expect((await call('GET', '/api/deck')).status).toBe(401);
     expect((await call('GET', '/api/deck', 'nope')).status).toBe(401);

@@ -28,13 +28,11 @@ npm test        # API tests against an in-memory Postgres
 
 ## Updating the name list
 
-The bundled data runs through 2017. To update it, download [names.zip](https://www.ssa.gov/oact/babynames/names.zip) from the SSA, unzip it, and run:
+The SSA publishes each year's names around May. A GitHub Action (`.github/workflows/update-names.yml`) checks on the 1st of every month: it downloads [names.zip](https://www.ssa.gov/oact/babynames/names.zip), rebuilds `server/namesData.ts`, runs the tests, and commits to `main` if anything changed, which redeploys on Render. Votes are kept.
 
-```sh
-npm run build-names -- path/to/unzipped/folder
-```
+To run it right away: GitHub → **Actions** → **Update baby names** → **Run workflow**.
 
-Then bump `SEED_VERSION` in `server/db.ts` so the database reloads the names on the next deploy. Votes are kept.
+To do it by hand instead, unzip `names.zip` and run `npm run build-names -- path/to/unzipped/folder`, then commit `server/namesData.ts`.
 
 ## How it's built
 

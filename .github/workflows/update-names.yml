@@ -1,0 +1,50 @@
+# Refreshes server/namesData.ts from the SSA's national baby name file.
+# SSA publishes each year's names around Mother's Day (May). This runs on the
+# 1st of every month and can also be started by hand from the Actions tab.
+# When the data changed and tests pass, it commits to main, and Render redeploys.
+name: Update baby names
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 12 1 * *'
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Download SSA names.zip
+        run: |
+          mkdir -p ssa
+          # ssa.gov rejects requests without a browser-like user agent.
+          curl -fsSL --retry 3 -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)" \
+            -o ssa/names.zip https://www.ssa.gov/oact/babynames/names.zip
+          unzip -q -o ssa/names.zip -d ssa
+          ls ssa | grep -E '^yob[0-9]{4}\.txt$' | sort | tail -1
+
+      - run: npm run build-names -- ssa
+      - run: npx tsc --noEmit
+      - run: npm test
+
+      - name: Commit if the data changed
+        run: |
+          if git diff --quiet server/namesData.ts; then
+            echo "Names are already up to date."
+            exit 0
+          fi
+          year=$(grep -oE 'DATA_YEAR = [0-9]+' server/namesData.ts | grep -oE '[0-9]+')
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/namesData.ts
+          git commit -m "Update baby names to SSA data through $year"
+          git push
