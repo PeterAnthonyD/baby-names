@@ -644,3 +644,21 @@ h1 {
   font-weight: 700;
   color: var(--accent);
 }
+
+.reset-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.reset-buttons button {
+  flex: 1;
+}
+
+.ghost.danger {
+  color: #c0392b;
+}
+
+.reset-done {
+  margin-top: 10px !important;
+}

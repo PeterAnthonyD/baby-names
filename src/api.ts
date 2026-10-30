@@ -103,5 +103,6 @@ export const api = {
       `/api/rate/next?skip=${skip.join(',')}`,
     ),
   rate: (nameId: number, score: number) => request('POST', '/api/rate', { nameId, score }),
+  reset: (scope: 'me' | 'family') => request('POST', '/api/reset', { scope }),
   rankings: () => request<{ rows: RankingRow[] }>('GET', '/api/rankings'),
 };
