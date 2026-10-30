@@ -45,10 +45,10 @@ export function Results({ partner, hasPartner, me }: { partner: string; hasPartn
   return (
     <div className="results">
       <h1>Results</h1>
-      {data.waitingOnMe > 0 && (
+      {data.unseenByMe > 0 && (
         <p className="banner">
-          {partner} liked {data.waitingOnMe} name{data.waitingOnMe === 1 ? '' : 's'} you haven't seen yet. They're at the
-          front of your deck.
+          {partner} has seen {data.unseenByMe} name{data.unseenByMe === 1 ? '' : 's'} you haven't. They're near the top of
+          your deck.
         </p>
       )}
       <div className="chips">
