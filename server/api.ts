@@ -53,6 +53,8 @@ export async function handleApi(db: Db, req: ApiRequest): Promise<ApiResponse> {
         return ok(await nextToRate(db, await auth(db, req), req.query));
       case 'POST /api/rate':
         return ok(await rate(db, await auth(db, req), req.body));
+      case 'POST /api/reset':
+        return ok(await reset(db, await auth(db, req), req.body));
       case 'GET /api/rankings':
         return ok(await rankings(db, await auth(db, req)));
       default:
@@ -425,4 +427,25 @@ async function rankings(db: Db, member: Member): Promise<{ rows: RankingRow[] }>
     [member.id, member.household_id],
   );
   return { rows };
+}
+
+// ---------- reset ----------
+
+// "me" clears your own swipes and ratings. "family" clears both of yours plus
+// the names you added; the family, its code and both sign-ins stay.
+async function reset(db: Db, member: Member, body: unknown) {
+  const scope = (body as Record<string, unknown> | null)?.scope;
+  if (scope === 'me') {
+    await db.query('delete from votes where member_id = $1', [member.id]);
+    await db.query('delete from ratings where member_id = $1', [member.id]);
+  } else if (scope === 'family') {
+    const members = 'select id from members where household_id = $1';
+    await db.query(`delete from votes where member_id in (${members})`, [member.household_id]);
+    await db.query(`delete from ratings where member_id in (${members})`, [member.household_id]);
+    await db.query('delete from household_names where household_id = $1', [member.household_id]);
+    await db.query('delete from names where household_id = $1', [member.household_id]);
+  } else {
+    throw new HttpError(400, 'Scope must be me or family');
+  }
+  return { ok: true };
 }

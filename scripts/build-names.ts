@@ -14,6 +14,18 @@ const MIN_RECENT = 100; // babies in the recent window to make the deck
 const MIN_PEAK = 500; // or babies in any single year (keeps classics)
 const UNISEX_SHARE = 0.1; // each sex has at least 10% of babies
 
+// Placeholders and words that hospitals sometimes report instead of a name.
+const NOT_NAMES = new Set(
+  ['Baby', 'Babyboy', 'Babygirl', 'Boy', 'Girl', 'Son', 'Daughter', 'Male', 'Female', 'Infant', 'Unknown',
+    'Unnamed', 'Notnamed', 'Noname', 'Nameless', 'Twin', 'None'].map((n) => n.toLowerCase()),
+);
+
+// Drops placeholders, initials with no vowel (Jr, Md, Tj) and typos with a
+// letter tripled (Willliam).
+function isRealName(name: string) {
+  return !NOT_NAMES.has(name.toLowerCase()) && /[aeiouy]/i.test(name) && !/(.)\1\1/i.test(name);
+}
+
 const dir = process.argv[2];
 if (!dir) {
   console.error('Usage: npm run build-names -- path/to/ssa/folder');
@@ -62,7 +74,9 @@ const sum = (s: Stat, from: number, to: number) => {
   return total;
 };
 
-const kept = [...stats.entries()].filter(([, s]) => s.fRecent + s.mRecent >= MIN_RECENT || s.peak >= MIN_PEAK);
+const kept = [...stats.entries()].filter(
+  ([name, s]) => isRealName(name) && (s.fRecent + s.mRecent >= MIN_RECENT || s.peak >= MIN_PEAK),
+);
 
 // Rank within each sex by babies in the latest year, like the SSA's own
 // top-1000 lists. Unisex names take their better rank.

@@ -150,3 +150,46 @@ describe('ratings', () => {
     expect(wifeRows.find((r: any) => r.name === 'Emma')).toMatchObject({ mine: 4, theirs: 3 });
   });
 });
+
+describe('names list', () => {
+  it('has no placeholders or obvious errors', async () => {
+    const junk = await db.query<{ name: string }>(
+      `select name from names where lower(name) in ('unknown', 'baby', 'babyboy', 'infant', 'male', 'notnamed', 'jr', 'willliam')`,
+    );
+    expect(junk).toEqual([]);
+  });
+});
+
+describe('reset', () => {
+  const counts = async () =>
+    (
+      await db.query<{ petey: number; wife: number; ratings: number; added: number }>(
+        `select
+           (select count(*)::int from votes v join members m on m.id = v.member_id where m.display_name = 'Petey') as petey,
+           (select count(*)::int from votes v join members m on m.id = v.member_id where m.display_name = 'Wife') as wife,
+           (select count(*)::int from ratings) as ratings,
+           (select count(*)::int from household_names) as added`,
+      )
+    )[0];
+
+  it('clears just your own swipes and ratings', async () => {
+    const before = await counts();
+    expect(before.petey).toBeGreaterThan(0);
+    expect(before.wife).toBeGreaterThan(0);
+    await call('POST', '/api/reset', petey, { scope: 'me' });
+    const after = await counts();
+    expect(after.petey).toBe(0);
+    expect(after.wife).toBe(before.wife);
+    expect(after.added).toBe(before.added);
+  });
+
+  it('clears the whole family but keeps you paired', async () => {
+    await call('POST', '/api/reset', wife, { scope: 'family' });
+    const after = await counts();
+    expect(after).toMatchObject({ petey: 0, wife: 0, added: 0 });
+    expect((await call('GET', '/api/me', petey)).body.partners).toEqual(['Wife']);
+    const deck = (await call('GET', '/api/deck?letter=z&limit=100', petey)).body.cards;
+    expect(deck.some((c: any) => c.name === 'Zephyrine')).toBe(false);
+    expect((await call('POST', '/api/reset', petey, { scope: 'all' })).status).toBe(400);
+  });
+});

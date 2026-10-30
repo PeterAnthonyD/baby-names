@@ -59,7 +59,7 @@ create index if not exists ratings_member_name on ratings (member_id, name_id, c
 create table if not exists meta (key text primary key, value text not null);
 `;
 
-const SEED_VERSION = '1';
+const SEED_VERSION = '2';
 const BATCH = 4000;
 
 let ready: Promise<void> | null = null;
@@ -100,6 +100,11 @@ async function setup(db: Db) {
       ],
     );
   }
+  // Remove names dropped from the list since the last seed (e.g. placeholders
+  // like "Unknown"). Names you added yourselves are never touched.
+  await db.query(`delete from names where household_id is null and not (lower(name) = any($1::text[]))`, [
+    rows.map((r) => r[0].toLowerCase()),
+  ]);
   await db.query(
     `insert into meta (key, value) values ('seed_version', $1)
      on conflict (key) do update set value = excluded.value`,
