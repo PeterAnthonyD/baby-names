@@ -48,6 +48,14 @@ create table if not exists votes (
   primary key (member_id, name_id)
 );
 create index if not exists votes_name on votes (name_id);
+create table if not exists ratings (
+  id bigserial primary key,
+  member_id uuid not null references members(id) on delete cascade,
+  name_id int not null references names(id) on delete cascade,
+  score smallint not null check (score between 1 and 5),
+  created_at timestamptz not null default now()
+);
+create index if not exists ratings_member_name on ratings (member_id, name_id, created_at desc);
 create table if not exists meta (key text primary key, value text not null);
 `;
 

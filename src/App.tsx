@@ -4,8 +4,9 @@ import { Welcome } from './Welcome';
 import { Swipe } from './Swipe';
 import { Results } from './Results';
 import { Family } from './Family';
+import { Rank } from './Rank';
 
-type Tab = 'swipe' | 'results' | 'family';
+type Tab = 'swipe' | 'rank' | 'results' | 'family';
 
 export function App() {
   const [me, setMe] = useState<Me | null>(null);
@@ -46,6 +47,7 @@ export function App() {
     <div className="app">
       <main className="screen">
         {tab === 'swipe' && <Swipe me={me} />}
+        {tab === 'rank' && <Rank me={me} partner={partner} />}
         {tab === 'results' && <Results partner={partner} hasPartner={me.partners.length > 0} me={me} />}
         {tab === 'family' && (
           <Family
@@ -60,6 +62,7 @@ export function App() {
       </main>
       <nav className="tabs">
         <TabButton active={tab === 'swipe'} onClick={() => setTab('swipe')} icon="🃏" label="Swipe" />
+        <TabButton active={tab === 'rank'} onClick={() => setTab('rank')} icon="⭐" label="Rank" />
         <TabButton active={tab === 'results'} onClick={() => setTab('results')} icon="💞" label="Results" />
         <TabButton active={tab === 'family'} onClick={() => setTab('family')} icon="👪" label="Family" />
       </nav>

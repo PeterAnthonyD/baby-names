@@ -541,3 +541,106 @@ h1 {
   font-weight: 700;
   margin-bottom: 10px !important;
 }
+
+/* ---------- rank ---------- */
+
+.rate-card {
+  position: relative;
+  background: var(--surface);
+  border-radius: 28px;
+  box-shadow: 0 8px 28px rgb(60 40 50 / 0.14);
+  padding: 48px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.rate-history {
+  margin: 16px 0 0;
+}
+
+.rate-question {
+  text-align: center;
+  font-weight: 600;
+  margin: 20px 0 10px;
+}
+
+.scores {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 2px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.score strong {
+  font-size: 22px;
+}
+
+.score span {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.2;
+  text-align: center;
+}
+
+.score.s5 {
+  background: var(--love);
+  border-color: var(--love);
+  color: white;
+}
+
+.score.s5 span {
+  color: rgb(255 255 255 / 0.85);
+}
+
+.score.s4 strong {
+  color: var(--like);
+}
+
+.score:active {
+  transform: scale(0.95);
+}
+
+.rate .link {
+  display: block;
+  margin: 8px auto 0;
+}
+
+.center-text {
+  text-align: center;
+}
+
+.sort {
+  margin-bottom: 8px;
+}
+
+.ranked li {
+  justify-content: flex-start;
+}
+
+.place {
+  width: 28px;
+  font-weight: 700;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.ranked .list-name {
+  flex: 1;
+}
+
+.avg {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent);
+}
