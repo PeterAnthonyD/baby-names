@@ -49,6 +49,12 @@ export async function handleApi(db: Db, req: ApiRequest): Promise<ApiResponse> {
         return ok(await addName(db, await auth(db, req), req.body));
       case 'GET /api/results':
         return ok(await results(db, await auth(db, req)));
+      case 'GET /api/rate/next':
+        return ok(await nextToRate(db, await auth(db, req), req.query));
+      case 'POST /api/rate':
+        return ok(await rate(db, await auth(db, req), req.body));
+      case 'GET /api/rankings':
+        return ok(await rankings(db, await auth(db, req)));
       default:
         return { status: 404, body: { error: 'Not found' } };
     }
@@ -314,4 +320,109 @@ async function results(db: Db, member: Member) {
   const bothPassed = list.filter((r) => r.mine === 'pass' && r.theirs === 'pass').sort(byName);
 
   return { matches, onlyMe, onlyThem, waitingOnThem, waitingOnMe, bothPassed };
+}
+
+// ---------- ratings ----------
+
+// Every 1-5 rating is kept. A person's score for a name is the average of
+// their last RECENT_RATINGS ratings, so it keeps moving as you re-rate.
+const RECENT_RATINGS = 3;
+
+// The pool is every name either of you liked or loved.
+// `household` is the SQL parameter holding the household id, e.g. "$2".
+const pool = (household: string) => `
+  select distinct v.name_id from votes v
+  join members m on m.id = v.member_id
+  where m.household_id = ${household} and v.verdict in ('like', 'love')`;
+
+async function nextToRate(db: Db, member: Member, query: URLSearchParams) {
+  const skip = (query.get('skip') ?? '')
+    .split(',')
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n > 0);
+
+  // Random pick, weighted: a name you've never rated is 6x as likely as one
+  // you just rated, and a rated name's weight grows back over a day. Weighted
+  // sampling via random()^(1/weight). The client skips the last few shown.
+  const [card] = await db.query<Card & { myScore: number | null; timesRated: number }>(
+    `with pool as (${pool('$2')}),
+     mine as (
+       select name_id, count(*)::int as times, max(created_at) as last_at
+       from ratings where member_id = $1 group by name_id
+     )
+     select ${CARD_COLUMNS}, coalesce(mine.times, 0) as "timesRated",
+       (select round(avg(score)::numeric, 1)::float from (
+          select score from ratings r where r.member_id = $1 and r.name_id = n.id
+          order by created_at desc limit ${RECENT_RATINGS}) s) as "myScore"
+     from pool
+     join names n on n.id = pool.name_id
+     left join mine on mine.name_id = n.id
+     left join household_names hn on hn.name_id = n.id and hn.household_id = $2
+     left join members am on am.id = hn.added_by
+     where not (n.id = any($3::int[]))
+     order by power(random(), 1.0 / case
+       when mine.name_id is null then 6
+       else 1 + least(extract(epoch from now() - mine.last_at) / 3600, 24) / 6 end) desc
+     limit 1`,
+    [member.id, member.household_id, skip],
+  );
+  const [{ size }] = await db.query<{ size: number }>(`select count(*)::int as size from (${pool('$1')}) p`, [
+    member.household_id,
+  ]);
+  return { card: card ?? null, poolSize: size };
+}
+
+async function rate(db: Db, member: Member, body: unknown) {
+  const nameId = Number((body as Record<string, unknown> | null)?.nameId);
+  const score = Number((body as Record<string, unknown> | null)?.score);
+  if (!Number.isInteger(nameId)) throw new HttpError(400, 'Missing nameId');
+  if (!Number.isInteger(score) || score < 1 || score > 5) throw new HttpError(400, 'Score must be 1 to 5');
+  const [inPool] = await db.query(`select 1 from (${pool('$1')}) p where name_id = $2`, [
+    member.household_id,
+    nameId,
+  ]);
+  if (!inPool) throw new HttpError(404, 'Only names one of you liked can be rated');
+  await db.query('insert into ratings (member_id, name_id, score) values ($1, $2, $3)', [member.id, nameId, score]);
+  return { ok: true };
+}
+
+export type RankingRow = Card & {
+  mine: number | null;
+  theirs: number | null;
+  combined: number | null;
+  myVote: Verdict | null;
+  theirVote: Verdict | null;
+};
+
+async function rankings(db: Db, member: Member): Promise<{ rows: RankingRow[] }> {
+  // Per person: average of their latest ratings. "theirs" averages the other
+  // members (just your partner for a couple). Combined averages whoever rated.
+  const rows = await db.query<RankingRow>(
+    `with pool as (${pool('$2')}),
+     recent as (
+       select r.member_id, r.name_id, r.score,
+         row_number() over (partition by r.member_id, r.name_id order by r.created_at desc) as rn
+       from ratings r join members m on m.id = r.member_id
+       where m.household_id = $2
+     ),
+     per_member as (
+       select member_id, name_id, avg(score) as score from recent
+       where rn <= ${RECENT_RATINGS} group by member_id, name_id
+     )
+     select ${CARD_COLUMNS},
+       round(avg(pm.score) filter (where pm.member_id = $1)::numeric, 1)::float as mine,
+       round(avg(pm.score) filter (where pm.member_id <> $1)::numeric, 1)::float as theirs,
+       round(avg(pm.score)::numeric, 1)::float as combined,
+       (select verdict from votes where member_id = $1 and name_id = n.id) as "myVote",
+       (select max(v.verdict) from votes v join members m on m.id = v.member_id
+         where m.household_id = $2 and m.id <> $1 and v.name_id = n.id) as "theirVote"
+     from pool
+     join names n on n.id = pool.name_id
+     left join per_member pm on pm.name_id = n.id
+     left join household_names hn on hn.name_id = n.id and hn.household_id = $2
+     left join members am on am.id = hn.added_by
+     group by n.id, n.name, n.sex, n.rank, n.trend, n.peak_year, am.display_name`,
+    [member.id, member.household_id],
+  );
+  return { rows };
 }

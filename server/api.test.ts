@@ -102,3 +102,51 @@ describe('api', () => {
     expect((await call('POST', '/api/vote', petey, { nameId: 1, verdict: 'meh' })).status).toBe(400);
   });
 });
+
+describe('ratings', () => {
+  const id = async (name: string) =>
+    (await db.query<{ id: number }>('select id from names where name = $1 and household_id is null', [name]))[0].id;
+
+  it('only offers names one of you liked, and keeps re-asking', async () => {
+    const emma = await id('Emma'); // both like (from the earlier test)
+    const liam = await id('Liam'); // only the wife loves it
+    const ava = await id('Ava'); // only Petey likes it
+    const caleb = await id('Caleb'); // nobody voted
+
+    const seen = new Set<string>();
+    for (let i = 0; i < 40; i++) {
+      const next = (await call('GET', '/api/rate/next', petey)).body;
+      seen.add(next.card.name);
+    }
+    expect(seen.has('Caleb')).toBe(false);
+    expect(seen.has('Emma') && seen.has('Liam') && seen.has('Ava')).toBe(true);
+
+    expect((await call('POST', '/api/rate', petey, { nameId: caleb, score: 3 })).status).toBe(404);
+    expect((await call('POST', '/api/rate', petey, { nameId: emma, score: 6 })).status).toBe(400);
+
+    // Rated names still come back; skip excludes the one just shown.
+    await call('POST', '/api/rate', petey, { nameId: emma, score: 5 });
+    const after = new Set<string>();
+    for (let i = 0; i < 60; i++) after.add((await call('GET', '/api/rate/next', petey)).body.card.name);
+    expect(after.has('Emma')).toBe(true);
+    const skipped = (await call('GET', `/api/rate/next?skip=${emma},${liam},${ava}`, petey)).body;
+    expect(['Emma', 'Liam', 'Ava']).not.toContain(skipped.card?.name);
+  });
+
+  it('ranks by the average of each person’s latest three ratings', async () => {
+    const emma = await id('Emma');
+    const liam = await id('Liam');
+    // Petey: Emma 5 (above), then 1, 4, 4 -> last three = 1,4,4 -> 3.0
+    for (const score of [1, 4, 4]) await call('POST', '/api/rate', petey, { nameId: emma, score });
+    await call('POST', '/api/rate', wife, { nameId: emma, score: 4 });
+    await call('POST', '/api/rate', wife, { nameId: liam, score: 5 });
+
+    const rows = (await call('GET', '/api/rankings', petey)).body.rows;
+    const byName = Object.fromEntries(rows.map((r: any) => [r.name, r]));
+    expect(byName.Emma).toMatchObject({ mine: 3, theirs: 4, combined: 3.5, myVote: 'love', theirVote: 'like' });
+    expect(byName.Liam).toMatchObject({ mine: null, theirs: 5, combined: 5, myVote: 'pass', theirVote: 'love' });
+
+    const wifeRows = (await call('GET', '/api/rankings', wife)).body.rows;
+    expect(wifeRows.find((r: any) => r.name === 'Emma')).toMatchObject({ mine: 4, theirs: 3 });
+  });
+});

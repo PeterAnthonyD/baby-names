@@ -30,6 +30,14 @@ export type Results = {
   bothPassed: ResultRow[];
 };
 
+export type RankingRow = Card & {
+  mine: number | null;
+  theirs: number | null;
+  combined: number | null;
+  myVote: Verdict | null;
+  theirVote: Verdict | null;
+};
+
 export type Filters = { sex: 'any' | 'F' | 'M'; popularity: 'any' | 'top100' | 'top1000' | 'rare'; letter: string };
 
 const TOKEN_KEY = 'baby-names-token';
@@ -89,4 +97,11 @@ export const api = {
   unvote: (nameId: number) => request('DELETE', `/api/vote?nameId=${nameId}`),
   addName: (name: string, sex: Sex) => request<{ card: Card }>('POST', '/api/names', { name, sex }),
   results: () => request<Results>('GET', '/api/results'),
+  nextToRate: (skip: number[]) =>
+    request<{ card: (Card & { myScore: number | null; timesRated: number }) | null; poolSize: number }>(
+      'GET',
+      `/api/rate/next?skip=${skip.join(',')}`,
+    ),
+  rate: (nameId: number, score: number) => request('POST', '/api/rate', { nameId, score }),
+  rankings: () => request<{ rows: RankingRow[] }>('GET', '/api/rankings'),
 };

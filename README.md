@@ -2,6 +2,8 @@
 
 A swipe app for picking a baby name together. You and your partner each swipe through names on your own phone (right = like, left = pass, up = love), then see the names you both like, the ones only one of you likes, and the ones your partner hasn't seen yet. You can add your own names, which go to the front of both decks.
 
+The Rank tab keeps asking each of you to rate liked names from 1 to 5, picked at random, and names come back to be rated again over time. Each person's score is the average of their last three ratings, and the rank list sorts by both of you combined, just you, or just your partner.
+
 Names come from the US Social Security Administration's baby name records (public domain): about 24,000 names that were given to at least 100 babies in the last 20 years of data, or 500 in any single year.
 
 ## Deploy on Render
