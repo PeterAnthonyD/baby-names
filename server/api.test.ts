@@ -79,15 +79,24 @@ describe('api', () => {
 
     const w = (await call('GET', '/api/results', wife)).body;
     expect(w.onlyMe.map((x: any) => x.name)).toEqual(['Liam']);
-    expect(w.waitingOnMe).toBe(1);
+    expect(w.unseenByMe).toBe(1);
 
-    // Noah (liked by Petey) is first in the wife's deck; voted names never come back.
+    // Noah (swiped by Petey) is first in the wife's deck; voted names never come back.
     const deck = (await call('GET', '/api/deck?limit=100', wife)).body.cards;
     expect(deck[0].name).toBe('Noah');
     expect(deck.some((c: any) => ['Emma', 'Ava', 'Liam'].includes(c.name))).toBe(false);
 
     await call('DELETE', `/api/vote?nameId=${noah}`, petey);
     expect((await call('GET', '/api/results', petey)).body.waitingOnThem).toEqual([]);
+  });
+
+  it('puts names your partner passed on near the top too, so order reveals nothing', async () => {
+    const caleb = (await db.query<{ id: number }>("select id from names where name = 'Caleb'"))[0].id;
+    await call('POST', '/api/vote', wife, { nameId: caleb, verdict: 'pass' });
+    const deck = (await call('GET', '/api/deck?limit=5', petey)).body.cards;
+    expect(deck[0].name).toBe('Caleb');
+    expect((await call('GET', '/api/results', petey)).body.unseenByMe).toBe(1);
+    await call('DELETE', `/api/vote?nameId=${caleb}`, wife);
   });
 
   it('puts added names at the front of both decks, ignoring filters', async () => {
@@ -145,6 +154,16 @@ describe('ratings', () => {
     expect(after.has('Emma')).toBe(true);
     const skipped = (await call('GET', `/api/rate/next?skip=${emma},${liam},${ava}`, petey)).body;
     expect(['Emma', 'Liam', 'Ava']).not.toContain(skipped.card?.name);
+  });
+
+  it("never offers a name you haven't swiped, even if your partner liked it", async () => {
+    const zoe = await id('Zoe');
+    await call('POST', '/api/vote', wife, { nameId: zoe, verdict: 'love' });
+    for (let i = 0; i < 30; i++) expect((await call('GET', '/api/rate/next', petey)).body.card.name).not.toBe('Zoe');
+    expect((await call('POST', '/api/rate', petey, { nameId: zoe, score: 3 })).status).toBe(404);
+    const rows = (await call('GET', '/api/rankings', petey)).body.rows;
+    expect(rows.some((r: any) => r.name === 'Zoe')).toBe(false);
+    await call('DELETE', `/api/vote?nameId=${zoe}`, wife);
   });
 
   it('ranks by the average of each person’s latest three ratings', async () => {

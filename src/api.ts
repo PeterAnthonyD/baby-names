@@ -26,7 +26,7 @@ export type Results = {
   onlyMe: ResultRow[];
   onlyThem: ResultRow[];
   waitingOnThem: ResultRow[];
-  waitingOnMe: number;
+  unseenByMe: number;
   bothPassed: ResultRow[];
 };
 

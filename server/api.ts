@@ -225,7 +225,8 @@ async function deck(db: Db, member: Member, query: URLSearchParams): Promise<{ c
   const limit = Math.min(Number(query.get('limit')) || 30, 100);
 
   // Names either of you added always come first and ignore filters. Next come
-  // names your partner liked, so matches show up sooner. The rest is a random
+  // names your partner has already swiped, whatever they chose, so you catch
+  // up with them without learning their answer. The rest is a random
   // draw weighted toward popular names (weighted sampling: random()^(1/weight)),
   // so the deck isn't mostly one-off spellings.
   const cards = await db.query<Card>(
@@ -240,7 +241,7 @@ async function deck(db: Db, member: Member, query: URLSearchParams): Promise<{ c
        (hn.name_id is not null) desc,
        exists (
          select 1 from votes v join members m on m.id = v.member_id
-         where m.household_id = $2 and m.id <> $1 and v.name_id = n.id and v.verdict in ('like', 'love')
+         where m.household_id = $2 and m.id <> $1 and v.name_id = n.id
        ) desc,
        power(random(), 1.0 / power(n.recent + 20, 0.7)) desc
      limit ${limit}`,
@@ -345,10 +346,11 @@ async function results(db: Db, member: Member) {
   const onlyMe = list.filter((r) => likes(r.mine) && r.theirs === 'pass').sort(byName);
   const onlyThem = list.filter((r) => likes(r.theirs) && r.mine === 'pass').sort(byName);
   const waitingOnThem = list.filter((r) => likes(r.mine) && r.theirs === null).sort(byName);
-  const waitingOnMe = list.filter((r) => likes(r.theirs) && r.mine === null).length;
+  // Only a count, never which names or how they voted, so it can't sway you.
+  const unseenByMe = list.filter((r) => r.theirs !== null && r.mine === null).length;
   const bothPassed = list.filter((r) => r.mine === 'pass' && r.theirs === 'pass').sort(byName);
 
-  return { matches, onlyMe, onlyThem, waitingOnThem, waitingOnMe, bothPassed };
+  return { matches, onlyMe, onlyThem, waitingOnThem, unseenByMe, bothPassed };
 }
 
 // ---------- ratings ----------
@@ -357,12 +359,14 @@ async function results(db: Db, member: Member) {
 // their last RECENT_RATINGS ratings, so it keeps moving as you re-rate.
 const RECENT_RATINGS = 3;
 
-// The pool is every name either of you liked or loved.
-// `household` is the SQL parameter holding the household id, e.g. "$2".
-const pool = (household: string) => `
+// The pool is every name either of you liked or loved, limited to names you
+// have swiped yourself so it never shows you your partner's picks early.
+// `household` and `member` are the SQL parameters holding those ids, e.g. "$2".
+const pool = (household: string, member: string) => `
   select distinct v.name_id from votes v
   join members m on m.id = v.member_id
-  where m.household_id = ${household} and v.verdict in ('like', 'love')`;
+  where m.household_id = ${household} and v.verdict in ('like', 'love')
+    and exists (select 1 from votes mv where mv.member_id = ${member} and mv.name_id = v.name_id)`;
 
 async function nextToRate(db: Db, member: Member, query: URLSearchParams) {
   const skip = (query.get('skip') ?? '')
@@ -374,7 +378,7 @@ async function nextToRate(db: Db, member: Member, query: URLSearchParams) {
   // you just rated, and a rated name's weight grows back over a day. Weighted
   // sampling via random()^(1/weight). The client skips the last few shown.
   const [card] = await db.query<Card & { myScore: number | null; timesRated: number }>(
-    `with pool as (${pool('$2')}),
+    `with pool as (${pool('$2', '$1')}),
      mine as (
        select name_id, count(*)::int as times, max(created_at) as last_at
        from ratings where member_id = $1 group by name_id
@@ -395,8 +399,9 @@ async function nextToRate(db: Db, member: Member, query: URLSearchParams) {
      limit 1`,
     [member.id, member.household_id, skip],
   );
-  const [{ size }] = await db.query<{ size: number }>(`select count(*)::int as size from (${pool('$1')}) p`, [
+  const [{ size }] = await db.query<{ size: number }>(`select count(*)::int as size from (${pool('$1', '$2')}) p`, [
     member.household_id,
+    member.id,
   ]);
   return { card: card ?? null, poolSize: size };
 }
@@ -406,11 +411,12 @@ async function rate(db: Db, member: Member, body: unknown) {
   const score = Number((body as Record<string, unknown> | null)?.score);
   if (!Number.isInteger(nameId)) throw new HttpError(400, 'Missing nameId');
   if (!Number.isInteger(score) || score < 1 || score > 5) throw new HttpError(400, 'Score must be 1 to 5');
-  const [inPool] = await db.query(`select 1 from (${pool('$1')}) p where name_id = $2`, [
+  const [inPool] = await db.query(`select 1 from (${pool('$1', '$2')}) p where name_id = $3`, [
     member.household_id,
+    member.id,
     nameId,
   ]);
-  if (!inPool) throw new HttpError(404, 'Only names one of you liked can be rated');
+  if (!inPool) throw new HttpError(404, 'Only names you have swiped and one of you liked can be rated');
   await db.query('insert into ratings (member_id, name_id, score) values ($1, $2, $3)', [member.id, nameId, score]);
   return { ok: true };
 }
@@ -427,7 +433,7 @@ async function rankings(db: Db, member: Member): Promise<{ rows: RankingRow[] }>
   // Per person: average of their latest ratings. "theirs" averages the other
   // members (just your partner for a couple). Combined averages whoever rated.
   const rows = await db.query<RankingRow>(
-    `with pool as (${pool('$2')}),
+    `with pool as (${pool('$2', '$1')}),
      recent as (
        select r.member_id, r.name_id, r.score,
          row_number() over (partition by r.member_id, r.name_id order by r.created_at desc) as rn
